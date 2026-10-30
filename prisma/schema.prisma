@@ -1,0 +1,268 @@
+generator client {
+    provider = "prisma-client-js"
+    // "debian-openssl-3.0.x" = the Docker/Cloud Run image (node:22-bookworm-slim).
+    binaryTargets = ["native", "debian-openssl-3.0.x", "linux-musl-arm64-openssl-3.0.x"]
+    // Relative path so it works both here and inside Docker (/app/node_modules/.prisma/client).
+    output = "../node_modules/.prisma/client"
+}
+
+datasource db {
+    provider = "postgresql"
+    url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  SALES_REP
+}
+
+enum LifecycleStage {
+  LEAD
+  PROSPECT
+  CUSTOMER
+  CHURNED
+}
+
+enum DealStage {
+  LEAD
+  QUALIFIED
+  PROPOSAL
+  PROPOSAL_SENT
+  NEGOTIATION
+  CLOSED_WON
+  CLOSED_LOST
+}
+
+enum ActivityType {
+  CALL
+  EMAIL
+  MEETING
+  NOTE
+  TASK
+}
+
+enum TransactionType {
+  PAYMENT
+  INVOICE
+  REFUND
+}
+
+enum TransactionStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  password      String?
+  role          UserRole  @default(SALES_REP)
+  active        Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts      Account[]
+  sessions      Session[]
+  contacts      Contact[]     @relation("ContactOwner")
+  companies     Company[]     @relation("CompanyOwner")
+  deals         Deal[]        @relation("DealOwner")
+  activities    Activity[]    @relation("ActivityCreator")
+}
+
+model Account {
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?   @db.Text
+  access_token      String?   @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?   @db.Text
+  session_state     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@id([identifier, token])
+}
+
+model Contact {
+  id             String         @id @default(cuid())
+  firstName      String
+  lastName       String
+  email          String?
+  phone          String?
+  jobTitle       String?
+  address        String?
+  lifecycleStage LifecycleStage @default(LEAD)
+  tags           String[]       @default([])
+  notes          String?        @db.Text
+  ownerId        String?
+  companyId      String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  owner          User?          @relation("ContactOwner", fields: [ownerId], references: [id])
+  company        Company?       @relation(fields: [companyId], references: [id])
+  deals          Deal[]
+  activities     Activity[]     @relation("ContactActivities")
+  transactions   Transaction[]
+
+  @@index([ownerId])
+  @@index([companyId])
+  @@index([lifecycleStage])
+  @@index([email])
+}
+
+model Company {
+  id              String   @id @default(cuid())
+  name            String
+  industry        String?
+  website         String?
+  phone           String?
+  address         String?
+  description     String?  @db.Text
+  employeeCount   Int?
+  annualRevenue   Float?
+  ownerId         String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  owner           User?     @relation("CompanyOwner", fields: [ownerId], references: [id])
+  contacts        Contact[]
+  deals           Deal[]
+  activities      Activity[] @relation("CompanyActivities")
+
+  @@index([ownerId])
+}
+
+model PipelineStage {
+  id        String   @id @default(cuid())
+  name      String
+  order     Int
+  color     String   @default("#3b82f6")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([order])
+}
+
+model Deal {
+  id           String    @id @default(cuid())
+  name         String
+  value        Float     @default(0)
+  stage        DealStage @default(LEAD)
+  closeDate    DateTime?
+  probability  Float     @default(0)
+  description  String?   @db.Text
+  ownerId      String?
+  contactId    String?
+  companyId    String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  owner        User?     @relation("DealOwner", fields: [ownerId], references: [id])
+  contact      Contact?  @relation(fields: [contactId], references: [id])
+  company      Company?  @relation(fields: [companyId], references: [id])
+  activities   Activity[] @relation("DealActivities")
+  transactions Transaction[]
+
+  @@index([ownerId])
+  @@index([contactId])
+  @@index([companyId])
+  @@index([stage])
+  @@index([closeDate])
+}
+
+model Activity {
+  id          String       @id @default(cuid())
+  type        ActivityType
+  subject     String
+  description String?      @db.Text
+  date        DateTime     @default(now())
+  duration    Int?         // minutes
+  outcome     String?
+  completed   Boolean      @default(false)
+  dueDate     DateTime?
+  creatorId   String?
+  contactId   String?
+  companyId   String?
+  dealId      String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  creator     User?        @relation("ActivityCreator", fields: [creatorId], references: [id])
+  contact     Contact?     @relation("ContactActivities", fields: [contactId], references: [id])
+  company     Company?     @relation("CompanyActivities", fields: [companyId], references: [id])
+  deal        Deal?        @relation("DealActivities", fields: [dealId], references: [id])
+
+  @@index([creatorId])
+  @@index([contactId])
+  @@index([companyId])
+  @@index([dealId])
+  @@index([type])
+  @@index([date])
+}
+
+model Transaction {
+  id          String            @id @default(cuid())
+  amount      Float
+  date        DateTime          @default(now())
+  type        TransactionType
+  status      TransactionStatus @default(PENDING)
+  description String?           @db.Text
+  contactId   String?
+  dealId      String?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  contact     Contact?  @relation(fields: [contactId], references: [id])
+  deal        Deal?     @relation(fields: [dealId], references: [id])
+
+  @@index([contactId])
+  @@index([dealId])
+  @@index([type])
+  @@index([status])
+  @@index([date])
+}
+
+model GoogleOAuthToken {
+  id           String   @id @default(cuid())
+  accessToken  String   @db.Text
+  refreshToken String?  @db.Text
+  expiresAt    DateTime?
+  scope        String?
+  lastSyncAt   DateTime?
+  driveFolderId String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}

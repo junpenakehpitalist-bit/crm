@@ -1,0 +1,122 @@
+# CRM Hub - Cloud Build pipeline
+#
+# Builds the web + migrator images, pushes them to Artifact Registry, runs the
+# Prisma migration/seed Cloud Run Job (and waits for it), then deploys the
+# Cloud Run service. Normally invoked by ./deploy/deploy.sh, which creates all
+# infrastructure and passes the substitutions below. It can also be used from a
+# Cloud Build trigger on your Git repo (set the same substitutions in the trigger).
+#
+# Secrets are referenced from Secret Manager by name - no secret values live here.
+
+substitutions:
+  _REGION: us-central1
+  _AR_REPO: crm
+  _SERVICE: crm-web
+  _MIGRATE_JOB: crm-migrate
+  _RUN_SA: ""            # crm-run@<project>.iam.gserviceaccount.com
+  _SQL_CONNECTION: ""    # <project>:<region>:<instance>
+  _APP_URL: ""           # https://crm-web-<project-number>.<region>.run.app or custom domain
+  _ADMIN_EMAIL: ""
+  _ADMIN_NAME: Administrator
+  _ADMIN_RESET: "false"
+  _DISABLE_PUBLIC_SIGNUP: "true"   # "false" = anyone can create a SALES_REP account
+  _TAG: manual
+  _MEMORY: 1Gi
+  _CPU: "1"
+  _MIN_INSTANCES: "0"
+  _MAX_INSTANCES: "5"
+  _SECRET_DATABASE_URL: crm-database-url
+  _SECRET_AUTH: crm-auth-secret
+  _SECRET_GOOGLE_ID: crm-google-client-id
+  _SECRET_GOOGLE_SECRET: crm-google-client-secret
+  _SECRET_ADMIN_PASSWORD: crm-admin-password
+
+options:
+  logging: CLOUD_LOGGING_ONLY          # required when building with a user-managed service account
+  machineType: E2_HIGHCPU_8
+  dynamicSubstitutions: true
+  env:
+    - DOCKER_BUILDKIT=1
+
+timeout: 2400s
+
+steps:
+  # 1. Web image (default "runner" target)
+  - id: build-web
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - --target=runner
+      - --tag=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/${_SERVICE}:${_TAG}
+      - --tag=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/${_SERVICE}:latest
+      - .
+
+  # 2. Migrator image (prisma migrate deploy + seed). Reuses cached deps layers from step 1.
+  - id: build-migrate
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - --target=migrator
+      - --tag=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/${_MIGRATE_JOB}:${_TAG}
+      - --tag=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/${_MIGRATE_JOB}:latest
+      - .
+
+  - id: push
+    name: gcr.io/cloud-builders/docker
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -e
+        docker push --all-tags ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/${_SERVICE}
+        docker push --all-tags ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/${_MIGRATE_JOB}
+
+  # 3. Create/update the migrate job and run it to completion BEFORE the new app version goes live.
+  - id: migrate
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: gcloud
+    args:
+      - run
+      - jobs
+      - deploy
+      - ${_MIGRATE_JOB}
+      - --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/${_MIGRATE_JOB}:${_TAG}
+      - --region=${_REGION}
+      - --service-account=${_RUN_SA}
+      - --set-cloudsql-instances=${_SQL_CONNECTION}
+      - --set-secrets=DATABASE_URL=${_SECRET_DATABASE_URL}:latest,ADMIN_PASSWORD=${_SECRET_ADMIN_PASSWORD}:latest
+      - --set-env-vars=ADMIN_EMAIL=${_ADMIN_EMAIL},ADMIN_NAME=${_ADMIN_NAME},ADMIN_RESET_PASSWORD=${_ADMIN_RESET}
+      - --max-retries=0
+      - --task-timeout=900s
+      - --execute-now
+      - --wait
+      - --quiet
+
+  # 4. Deploy the web service.
+  - id: deploy
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - ${_SERVICE}
+      - --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/${_SERVICE}:${_TAG}
+      - --region=${_REGION}
+      - --platform=managed
+      - --service-account=${_RUN_SA}
+      - --set-cloudsql-instances=${_SQL_CONNECTION}
+      - --set-secrets=DATABASE_URL=${_SECRET_DATABASE_URL}:latest,AUTH_SECRET=${_SECRET_AUTH}:latest,NEXTAUTH_SECRET=${_SECRET_AUTH}:latest,GOOGLE_CLIENT_ID=${_SECRET_GOOGLE_ID}:latest,GOOGLE_CLIENT_SECRET=${_SECRET_GOOGLE_SECRET}:latest
+      - --set-env-vars=AUTH_URL=${_APP_URL},NEXTAUTH_URL=${_APP_URL},AUTH_TRUST_HOST=true,DISABLE_PUBLIC_SIGNUP=${_DISABLE_PUBLIC_SIGNUP}
+      - --port=8080
+      - --memory=${_MEMORY}
+      - --cpu=${_CPU}
+      - --min-instances=${_MIN_INSTANCES}
+      - --max-instances=${_MAX_INSTANCES}
+      - --timeout=300
+      - --allow-unauthenticated
+      - --labels=app=crm-hub
+      - --quiet
+
+images:
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/${_SERVICE}:${_TAG}
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_AR_REPO}/${_MIGRATE_JOB}:${_TAG}

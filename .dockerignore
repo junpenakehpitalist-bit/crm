@@ -1,0 +1,23 @@
+# Never send secrets or local build artifacts to the Docker / Cloud Build context
+.env
+.env.*
+!.env.example
+node_modules
+.next
+.build
+.yarn
+/.yarnrc.yml
+/yarn.lock
+.git
+.gitignore
+*.tsbuildinfo
+*.log
+.logs
+.deploy
+deploy
+Dockerfile
+.dockerignore
+cloudbuild.yaml
+README.md
+STYLE_GUIDE.md
+coverage
