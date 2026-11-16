@@ -9,12 +9,12 @@ import { PrismaClient, LifecycleStage } from '@prisma/client';
 const prisma = new PrismaClient();
 
 const COMPANIES = [
-  { name: 'Acme Logistics', industry: 'Logistics', website: 'https://acme-logistics.example.com', phone: '+1 415 555 0101', address: '120 Market St, San Francisco, CA', employeeCount: 250, annualRevenue: 18000000 },
-  { name: 'Brightwave Software', industry: 'Software', website: 'https://brightwave.example.com', phone: '+1 206 555 0102', address: '800 5th Ave, Seattle, WA', employeeCount: 85, annualRevenue: 9500000 },
-  { name: 'Cedar Health Partners', industry: 'Healthcare', website: 'https://cedarhealth.example.com', phone: '+1 512 555 0103', address: '45 Congress Ave, Austin, TX', employeeCount: 430, annualRevenue: 42000000 },
-  { name: 'Delta Retail Group', industry: 'Retail', website: 'https://deltaretail.example.com', phone: '+1 312 555 0104', address: '300 W Adams St, Chicago, IL', employeeCount: 1200, annualRevenue: 130000000 },
-  { name: 'Evergreen Energy', industry: 'Energy', website: 'https://evergreen-energy.example.com', phone: '+1 303 555 0105', address: '1600 Broadway, Denver, CO', employeeCount: 160, annualRevenue: 27000000 },
-  { name: 'Fjord Financial', industry: 'Finance', website: 'https://fjordfinancial.example.com', phone: '+1 212 555 0106', address: '1 Wall St, New York, NY', employeeCount: 320, annualRevenue: 56000000 },
+  { name: 'Acme Logistics', industry: 'Logistics', website: 'https://acme-logistics.example.com', phone: '+65 6555 0101', address: '1 Raffles Place, Singapore 048616', employeeCount: 250, annualRevenue: 18000000 },
+  { name: 'Brightwave Software', industry: 'Software', website: 'https://brightwave.example.com', phone: '+65 6555 0102', address: '80 Robinson Road, Singapore 068898', employeeCount: 85, annualRevenue: 9500000 },
+  { name: 'Cedar Health Partners', industry: 'Healthcare', website: 'https://cedarhealth.example.com', phone: '+65 6555 0103', address: '3 Temasek Avenue, Singapore 039190', employeeCount: 430, annualRevenue: 42000000 },
+  { name: 'Delta Retail Group', industry: 'Retail', website: 'https://deltaretail.example.com', phone: '+65 6555 0104', address: '290 Orchard Road, Singapore 238859', employeeCount: 1200, annualRevenue: 130000000 },
+  { name: 'Evergreen Energy', industry: 'Energy', website: 'https://evergreen-energy.example.com', phone: '+65 6555 0105', address: '12 Marina Boulevard, Singapore 018982', employeeCount: 160, annualRevenue: 27000000 },
+  { name: 'Fjord Financial', industry: 'Finance', website: 'https://fjordfinancial.example.com', phone: '+65 6555 0106', address: '8 Marina View, Singapore 018960', employeeCount: 320, annualRevenue: 56000000 },
 ];
 
 const CONTACTS: Array<{
@@ -58,7 +58,7 @@ async function main() {
         firstName: c.firstName,
         lastName: c.lastName,
         email: `${c.firstName}.${c.lastName}@example.com`.toLowerCase(),
-        phone: `+1 555 01${String(10 + n).padStart(2, '0')}`,
+        phone: `+65 9${String((n + 1) * 111).padStart(3, '0')} ${String(((n + 1) * 731) % 10000).padStart(4, '0')}`,
         jobTitle: c.jobTitle,
         address: company.address,
         lifecycleStage: c.stage,
